@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: sisssp
+
+  datasource:
+    url: jdbc:postgresql://172.20.2.105:5434/db_teste_assinatura?useTimezone=true&serverTimezone=UTC&currentSchema=public
+    username: postgres
+    password: "1234"
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        default_schema: public
