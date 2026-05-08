@@ -1,4 +1,4 @@
-package com.web_socket.sisssp.controller;
+package com.web_socket.sisssp.controller.websocket;
 
 import com.web_socket.sisssp.dto.MensagemPrivadaEntradaDTO;
 import com.web_socket.sisssp.dto.MensagemPrivadaRespostaDTO;

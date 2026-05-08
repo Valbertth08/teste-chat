@@ -1,5 +1,6 @@
 package com.web_socket.sisssp.dto;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record MensagemPrivadaRespostaDTO(
@@ -7,6 +8,7 @@ public record MensagemPrivadaRespostaDTO(
         String usuarioRemetente,
         String usuarioDestinatario,
         String mensagem,
-        UUID conversaId
+        UUID conversaId,
+        LocalDateTime dataEnvio
 ) {
 }

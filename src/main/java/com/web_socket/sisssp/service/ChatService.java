@@ -54,14 +54,15 @@ public class ChatService {
                 authenticatedSenderId,
                 dados.usuarioDestinatario(),
                 mensagem.getMensagem(),
-                conversa.getId()
+                conversa.getId(),
+                mensagem.getDataEnvio()
         );
     }
-    private synchronized Conversa obterOuCriarConversa(String userA, String userB) {
-        return participanteRepository.findExistingConversationId(userA, userB)
+    private synchronized Conversa obterOuCriarConversa(String usuarioRemetente, String usuarioDestinatario) {
+        return participanteRepository.encontrarIdDeConversaExistente(usuarioRemetente, usuarioDestinatario)
                 .map(uuid -> conversaRepository.findById(uuid)
                         .orElseThrow(() -> new RuntimeException("Erro de consistência: ID de conversa existe mas registro não encontrado")))
-                .orElseGet(() -> criarConversaPrivada(userA, userB));
+                .orElseGet(() -> criarConversaPrivada(usuarioRemetente, usuarioDestinatario));
     }
 
     private Conversa criarConversaPrivada(String userA, String userB) {
