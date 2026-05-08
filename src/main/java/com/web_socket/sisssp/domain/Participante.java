@@ -16,6 +16,7 @@ public class Participante {
     private Conversa conversa;
     @Column(name = "usuario_externo_id", nullable = false)
     private String usuarioExternoId;
+    private String nome;
     @Column(name = "data_entrada", nullable = false)
     private LocalDateTime dataEntrada;
 
@@ -58,5 +59,13 @@ public class Participante {
 
     public void setDataEntrada(LocalDateTime dataEntrada) {
         this.dataEntrada = dataEntrada;
+    }
+
+    public String getNome() {
+        return nome;
+    }
+
+    public void setNome(String nome) {
+        this.nome = nome;
     }
 }
