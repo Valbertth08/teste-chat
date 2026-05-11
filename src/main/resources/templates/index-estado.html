@@ -2,11 +2,12 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Chat Real-Time - Spring & Vue Logic</title>
+    <title>Chat Profissional - Spring Boot & WebSocket</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <style>
-        :root { --primary: #075e54; --bg-chat: #e5ddd5; --sidebar-bg: #ffffff; }
+        :root { --primary: #075e54; --bg-chat: #e5ddd5; --sidebar-bg: #ffffff; --me-bg: #dcf8c6; --them-bg: #ffffff; }
+
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #d1d7db; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
 
         .app-container { display: flex; width: 95%; max-width: 1200px; height: 90vh; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
@@ -18,24 +19,27 @@
         .conversa-item { padding: 15px; border-bottom: 1px solid #f2f2f2; cursor: pointer; transition: 0.3s; position: relative; }
         .conversa-item:hover { background: #f5f5f5; }
         .conversa-item.active { background: #ebebeb; }
-        .conversa-info { display: flex; justify-content: space-between; align-items: center; }
-        .badge { background: #25d366; color: white; border-radius: 50%; padding: 4px 8px; font-size: 11px; font-weight: bold; }
+        .badge { background: #25d366; color: white; border-radius: 50%; padding: 4px 8px; font-size: 11px; font-weight: bold; position: absolute; right: 15px; top: 25px; }
 
         /* Chat Area */
-        .chat-area { flex: 1; display: flex; flex-direction: column; background: var(--bg-chat); }
-        .chat-header { padding: 15px 25px; background: #ededed; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 15px; }
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: var(--bg-chat); position: relative; }
+        .chat-header { padding: 15px 25px; background: #ededed; border-bottom: 1px solid #ddd; font-weight: bold; z-index: 10; }
 
-        #chat-content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        #chat-content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 5px; }
 
         /* Mensagens */
-        .msg { padding: 8px 12px; border-radius: 8px; max-width: 65%; font-size: 14.5px; position: relative; line-height: 1.4; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
-        .me { align-self: flex-end; background: #dcf8c6; border-top-right-radius: 0; }
-        .them { align-self: flex-start; background: #ffffff; border-top-left-radius: 0; }
+        .msg { padding: 8px 12px; border-radius: 8px; max-width: 65%; font-size: 14.5px; position: relative; box-shadow: 0 1px 1px rgba(0,0,0,0.1); margin-bottom: 2px; }
+        .me { align-self: flex-end; background: var(--me-bg); border-top-right-radius: 0; }
+        .them { align-self: flex-start; background: var(--them-bg); border-top-left-radius: 0; }
         .msg-time { font-size: 10px; color: #888; display: block; margin-top: 4px; text-align: right; }
 
+        /* Divisor de Data */
+        .data-divider { display: flex; justify-content: center; margin: 15px 0; position: relative; width: 100%; }
+        .data-divider span { background: #e1f3fb; padding: 5px 15px; border-radius: 8px; font-size: 11px; color: #555; font-weight: 500; box-shadow: 0 1px 1px rgba(0,0,0,0.1); text-transform: uppercase; }
+
         /* Input */
-        .input-area { padding: 15px; background: #f0f2f5; display: flex; gap: 10px; align-items: center; }
-        input[type="text"] { flex: 1; padding: 12px; border: none; border-radius: 25px; outline: none; }
+        .input-area { padding: 15px; background: #f0f2f5; display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; padding: 12px; border: none; border-radius: 25px; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1); }
         button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; }
         button:disabled { background: #ccc; cursor: not-allowed; }
     </style>
@@ -44,191 +48,198 @@
 
 <div class="app-container">
     <div class="sidebar">
-        <div class="sidebar-header">Conversas - <span id="user-display">...</span></div>
-        <div id="lista-conversas">
-            <!-- Renderizado dinamicamente -->
-        </div>
+        <div class="sidebar-header">Conversas - <span id="user-display">Logando...</span></div>
+        <div id="lista-conversas"></div>
     </div>
 
     <div class="chat-area">
-        <div id="chat-header" class="chat-header">Selecione um contato para conversar</div>
-
-        <div id="chat-content">
-            <!-- Mensagens do Histórico -->
-        </div>
-
+        <div id="chat-header" class="chat-header">Selecione uma conversa</div>
+        <div id="chat-content"></div>
         <div class="input-area">
-            <input type="text" id="messageInput" placeholder="Mensagem" disabled>
+            <input type="text" id="messageInput" placeholder="Digite uma mensagem" disabled>
             <button id="sendBtn" onclick="sendMessage()" disabled>Enviar</button>
         </div>
     </div>
 </div>
 
 <script>
-    // --- ESTADO GLOBAL (PINIA MOCK) ---
     const store = {
-        meuId: "2026988010", // ID vindo da sua API
-        conversaAtivaId: null, // UUID da conversa selecionada
+        meuId: "usuario1",
+        conversaAtivaId: null,
         conversas: [],
-        historico: {} // Cache de mensagens: { 'uuid-123': [msgs...] }
+        paginaAtual: 0,
+        temMaisMensagens: true,
+        carregandoHistorico: false,
+        ultimaDataRenderizada: null
     };
 
     let stompClient = null;
 
-    // --- 1. CONEXÃO WEBSOCKET (Inicia ao carregar o app) ---
+    // 1. Conexão WebSocket
     function connectWebSocket() {
         const socket = new SockJS('http://localhost:8080/ws-chat');
         stompClient = Stomp.over(socket);
-
-        stompClient.connect({}, (frame) => {
-            console.log('Conectado ao STOMP');
+        stompClient.connect({}, () => {
             document.getElementById('user-display').innerText = store.meuId;
-
-            // Escuta mensagens privadas destinadas a mim
             stompClient.subscribe(`/queue/user.${store.meuId}`, (payload) => {
-                const novaMensagem = JSON.parse(payload.body);
-                processarMensagemRecebida(novaMensagem);
+                processarMensagemRecebida(JSON.parse(payload.body));
             });
         });
     }
 
-    // --- 2. RECUPERAÇÃO DE INFORMAÇÕES (API SPRING) ---
+    // 2. Buscar Lista de Conversas do Usuário
     async function fetchConversas() {
         try {
-            // Chamada para o seu @GetMapping("/conversas")
             const response = await fetch(`http://localhost:8080/participante/conversas`);
-            const data = await response.json(); // data é o Page<ConversaUsuarioProjection>
-
-            // Mapeando a projeção Java para o estado JS
+            const data = await response.json();
             store.conversas = data.content.map(c => ({
-                id: c.conversa_id, // UUID
+                id: c.conversa_id,
                 nome: c.nome_destinatario,
-                tipo: c.tipo_conversa,
                 data: c.data_conversa,
                 unread: 0
             }));
-
             renderSidebar();
-        } catch (error) {
-            console.error("Erro ao buscar conversas da API:", error);
-        }
+        } catch (e) { console.error("Erro ao buscar conversas", e); }
     }
 
-    // --- 3. LOGICA DE NOTIFICAÇÃO E FLUXO ---
-    function processarMensagemRecebida(msg) {
-        // Toda mensagem deve vir com conversaId no payload do backend
-        const convId = msg.conversaId;
+    // 3. Buscar Histórico de Mensagens (Paginado)
+    async function fetchHistorico(conversaId, appendTop = false) {
+        if (store.carregandoHistorico || (!store.temMaisMensagens && appendTop)) return;
 
-        // 1. Atualizar histórico no estado
-        if (!store.historico[convId]) store.historico[convId] = [];
-        store.historico[convId].push(msg);
+        store.carregandoHistorico = true;
+        const container = document.getElementById('chat-content');
+        const scrollAnterior = container.scrollHeight;
 
-        // 2. Identificar se deve notificar ou exibir
-        if (store.conversaAtivaId === convId) {
-            appendMessage(msg, 'them');
-            // Aqui você enviaria um "marcar como lida" para o back via fetch/socket
-        } else {
-            const conversa = store.conversas.find(c => c.id === convId);
-            if (conversa) {
-                conversa.unread++;
-                renderSidebar(); // Atualiza o badge na tela
-                notificarSom();
+        try {
+            const response = await fetch(`http://localhost:8080/mensagem/conversas/${conversaId}?idUsuario=${store.meuId}&page=${store.paginaAtual}&size=15&sort=data_envio,desc`);
+            const data = await response.json();
+            console.log("Primeira mensagem raw:", data.content[0]);
+
+            // Pegamos as mensagens e invertemos para a ordem cronológica
+            const mensagens = data.content.reverse();
+
+            mensagens.forEach(m => {
+                renderizarMensagemNaTela(m, m.ehRemetente ? 'me' : 'them', appendTop);
+            });
+
+            store.temMaisMensagens = !data.last;
+            store.paginaAtual++;
+
+            // Manter posição do scroll ao carregar mais
+            if (appendTop) {
+                container.scrollTop = container.scrollHeight - scrollAnterior;
+            } else if (store.paginaAtual === 1) {
+                container.scrollTop = container.scrollHeight;
             }
-        }
+        } catch (e) { console.error("Erro ao buscar histórico", e); }
+        store.carregandoHistorico = false;
     }
 
-    // --- 4. FUNÇÕES DE UI (REATIVIDADE MANUAL) ---
+    // 4. Selecionar Conversa e Abrir Chat
     function selecionarConversa(id) {
         store.conversaAtivaId = id;
-        const conv = store.conversas.find(c => c.id === id);
-        conv.unread = 0; // Limpa notificações localmente
+        store.paginaAtual = 0;
+        store.temMaisMensagens = true;
+        store.ultimaDataRenderizada = null; // Reseta para nova conversa
 
-        // Habilita campos
+        document.getElementById('chat-content').innerHTML = '';
         document.getElementById('messageInput').disabled = false;
         document.getElementById('sendBtn').disabled = false;
-        document.getElementById('chat-header').innerHTML = `<strong>${conv.nome}</strong>`;
+
+        const conv = store.conversas.find(c => c.id === id);
+        conv.unread = 0;
+        document.getElementById('chat-header').innerText = conv.nome;
 
         renderSidebar();
-        renderHistorico();
+        fetchHistorico(id);
+    }
+
+    function renderizarMensagemNaTela(msg, type, noTopo = false) {
+        const container = document.getElementById('chat-content');
+
+        const dataObjeto = new Date(msg.dataEnvio || msg.timestamp);
+        const dataString = dataObjeto.toLocaleDateString();
+        const horaString = dataObjeto.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Divisor de Data Inteligente
+        if (!noTopo && dataString !== store.ultimaDataRenderizada) {
+            inserirDivisorData(dataString);
+            store.ultimaDataRenderizada = dataString;
+        }
+
+        const div = document.createElement('div');
+        div.className = `msg ${type}`;
+        div.innerHTML = `<div>${msg.mensagem}</div><span class="msg-time">${horaString}</span>`;
+
+        if (noTopo) {
+            container.prepend(div);
+        } else {
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    function inserirDivisorData(data) {
+        const container = document.getElementById('chat-content');
+        const div = document.createElement('div');
+        div.className = 'data-divider';
+        const hoje = new Date().toLocaleDateString();
+        const texto = (data === hoje) ? 'Hoje' : data;
+        div.innerHTML = `<span>${texto}</span>`;
+        container.appendChild(div);
+    }
+
+    // 6. Enviar Mensagem via STOMP
+    function sendMessage() {
+        const input = document.getElementById('messageInput');
+        if (!input.value.trim()) return;
+
+        const payload = {
+            conversaId: store.conversaAtivaId,
+            usuarioRemetente: store.meuId,
+            mensagem: input.value,
+            timestamp: new Date().toISOString()
+        };
+
+        stompClient.send("/app/enviar-mensagem-privada.send", {}, JSON.stringify(payload));
+        renderizarMensagemNaTela(payload, 'me'); // Renderiza localmente
+        input.value = '';
+    }
+
+    function processarMensagemRecebida(msg) {
+        if (store.conversaAtivaId === msg.conversaId) {
+            renderizarMensagemNaTela(msg, 'them');
+        } else {
+            const c = store.conversas.find(conv => conv.id === msg.conversaId);
+            if (c) {
+                c.unread++;
+                renderSidebar();
+                document.title = "(*) Nova Mensagem!";
+                setTimeout(() => document.title = "Chat Profissional", 3000);
+            }
+        }
     }
 
     function renderSidebar() {
         const lista = document.getElementById('lista-conversas');
         lista.innerHTML = store.conversas.map(c => `
             <div class="conversa-item ${store.conversaAtivaId === c.id ? 'active' : ''}" onclick="selecionarConversa('${c.id}')">
-                <div class="conversa-info">
-                    <span>${c.nome}</span>
-                    ${c.unread > 0 ? `<span class="badge">${c.unread}</span>` : ''}
-                </div>
-                <div style="font-size: 10px; color: #999; margin-top: 5px;">
-                    ${new Date(c.data).toLocaleString()}
-                </div>
+                <span style="font-weight: 500;">${c.nome}</span>
+                ${c.unread > 0 ? `<span class="badge">${c.unread}</span>` : ''}
             </div>
         `).join('');
     }
 
-    function renderHistorico() {
-        const container = document.getElementById('chat-content');
-        container.innerHTML = '';
-        const mensagens = store.historico[store.conversaAtivaId] || [];
-        mensagens.forEach(m => {
-            appendMessage(m, m.usuarioRemetente === store.meuId ? 'me' : 'them');
-        });
-    }
+    document.getElementById('chat-content').onscroll = function() {
+        if (this.scrollTop === 0 && store.temMaisMensagens) {
+            fetchHistorico(store.conversaAtivaId, true);
+        }
+    };
 
-    function appendMessage(msg, type) {
-        const container = document.getElementById('chat-content');
-        const div = document.createElement('div');
-        div.className = `msg ${type}`;
-
-        const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        div.innerHTML = `
-            <div>${msg.mensagem}</div>
-            <span class="msg-time">${hora}</span>
-        `;
-
-        container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
-    }
-
-    function sendMessage() {
-        const input = document.getElementById('messageInput');
-        const texto = input.value.trim();
-
-        if (!texto || !store.conversaAtivaId) return;
-
-        const payload = {
-            conversaId: store.conversaAtivaId,
-            usuarioRemetente: store.meuId,
-            mensagem: texto,
-            timestamp: new Date().toISOString()
-        };
-
-        // Envio para o @MessageMapping do Spring
-        stompClient.send("/app/enviar-mensagem-privada.send", {}, JSON.stringify(payload));
-
-        // Atualiza localmente
-        if (!store.historico[store.conversaAtivaId]) store.historico[store.conversaAtivaId] = [];
-        store.historico[store.conversaAtivaId].push(payload);
-
-        appendMessage(payload, 'me');
-        input.value = '';
-    }
-
-    function notificarSom() {
-        // Simulação de som/notificação visual no título da página
-        document.title = "(*) Nova Mensagem!";
-        setTimeout(() => document.title = "Chat Real-Time", 3000);
-    }
-
-    // --- INICIALIZAÇÃO ---
     window.onload = () => {
         connectWebSocket();
         fetchConversas();
     };
-
 </script>
-
 </body>
 </html>
