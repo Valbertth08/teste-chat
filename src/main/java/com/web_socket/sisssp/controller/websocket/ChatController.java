@@ -21,9 +21,7 @@ public class ChatController {
 
     @MessageMapping("/enviar-mensagem-privada.send")
     public void enviarMensagemPrivada(@Payload MensagemPrivadaEntradaDTO dados) {
-
         MensagemPrivadaRespostaDTO respostaDTO = chatService.salvarMensagemPrivada(dados, dados.usuarioRemetente());
-        messagingTemplate.convertAndSend("/topic/chat." + respostaDTO.conversaId(), respostaDTO);
         messagingTemplate.convertAndSend(
                 "/queue/user." + dados.usuarioDestinatario(),
                 respostaDTO
