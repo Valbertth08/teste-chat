@@ -38,7 +38,6 @@ public class ChatService {
                     .orElseThrow(() -> new RuntimeException("Conversa não encontrada"));
         } else {
             conversa = obterOuCriarConversa(authenticatedSenderId, dados.usuarioDestinatario());
-            System.out.println("Conversa obtida/criada com ID: " + conversa.getId());
         }
 
         Mensagem mensagem = new Mensagem();
@@ -65,13 +64,13 @@ public class ChatService {
                 .orElseGet(() -> criarConversaPrivada(usuarioRemetente, usuarioDestinatario));
     }
 
-    private Conversa criarConversaPrivada(String userA, String userB) {
+    private Conversa criarConversaPrivada(String usuarioRemetente, String usuarioDestinatario) {
         Conversa conv = new Conversa();
         conv.setTipoConversa(TipoConversa.PRIVADA);
         conv.setDataConversa(LocalDateTime.now());
         final Conversa savedConv = conversaRepository.saveAndFlush(conv);
-        Participante p1 = new Participante(savedConv, userA, LocalDateTime.now());
-        Participante p2 = new Participante( savedConv, userB, LocalDateTime.now());
+        Participante p1 = new Participante(savedConv, usuarioRemetente, LocalDateTime.now());
+        Participante p2 = new Participante( savedConv, usuarioDestinatario, LocalDateTime.now());
         participanteRepository.saveAllAndFlush(List.of(p1, p2));
         return savedConv;
     }
