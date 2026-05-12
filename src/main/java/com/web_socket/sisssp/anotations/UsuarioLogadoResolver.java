@@ -10,8 +10,6 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
-import java.util.UUID;
-
 @Component
 public class UsuarioLogadoResolver implements HandlerMethodArgumentResolver {
 
@@ -22,7 +20,10 @@ public class UsuarioLogadoResolver implements HandlerMethodArgumentResolver {
     }
 
     @Override
-    public @Nullable Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer, NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
+    public @Nullable Object resolveArgument(MethodParameter parameter,
+                                            @Nullable ModelAndViewContainer mavContainer,
+                                            NativeWebRequest webRequest,
+                                            @Nullable WebDataBinderFactory binderFactory) throws Exception {
         var auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !auth.isAuthenticated()) {
@@ -34,6 +35,32 @@ public class UsuarioLogadoResolver implements HandlerMethodArgumentResolver {
         if (!(principal instanceof Jwt jwt)) {
             throw new IllegalStateException("Autenticação JWT inválida.");
         }
-        return jwt.getSubject();
+        String email = jwt.getClaimAsString("email");
+
+        if (email == null) {
+            return jwt.getSubject();
+        }
+
+        System.out.println("E-mail recuperado do JWT: " + email);
+        return email;
     }
+
+
+    //--    PROD
+//    @Override
+//    public @Nullable Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer, NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
+//        var auth = SecurityContextHolder.getContext().getAuthentication();
+//
+//        if (auth == null || !auth.isAuthenticated()) {
+//            throw new IllegalStateException("Usuário não autenticado.");
+//        }
+//
+//        Object principal = auth.getPrincipal();
+//
+//        if (!(principal instanceof Jwt jwt)) {
+//            throw new IllegalStateException("Autenticação JWT inválida.");
+//        }
+//        System.out.println("sub recuperado do JWT: " + jwt.getSubject());
+//        return jwt.getSubject();
+//    }
 }

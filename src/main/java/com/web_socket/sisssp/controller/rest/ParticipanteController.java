@@ -1,5 +1,6 @@
 package com.web_socket.sisssp.controller.rest;
 
+import com.web_socket.sisssp.anotations.UsuarioLogado;
 import com.web_socket.sisssp.projection.ConversaUsuarioProjection;
 
 import com.web_socket.sisssp.service.ParticipanteService;
@@ -21,10 +22,9 @@ public class ParticipanteController {
     private ParticipanteService participanteService;
 
     @GetMapping("/conversas")
-    public ResponseEntity<Page<ConversaUsuarioProjection>> listarConversasDoUsuario(String idUsuario, Pageable pageable) {
-        return ResponseEntity.ok(participanteService.listarConversasDoUsuario("2026988010", pageable));
+    public ResponseEntity<Page<ConversaUsuarioProjection>> listarConversasDoUsuario(@UsuarioLogado String sub, Pageable pageable) {
+        return ResponseEntity.ok(participanteService.listarConversasDoUsuario(sub, pageable));
 
     }
-
 
 }

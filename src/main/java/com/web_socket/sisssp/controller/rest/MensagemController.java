@@ -1,5 +1,6 @@
 package com.web_socket.sisssp.controller.rest;
 
+import com.web_socket.sisssp.anotations.UsuarioLogado;
 import com.web_socket.sisssp.projection.ConversaUsuarioProjection;
 import com.web_socket.sisssp.projection.MensagemHistoricoProjection;
 import com.web_socket.sisssp.service.MensagemService;
@@ -23,8 +24,8 @@ public class MensagemController {
     private MensagemService mensagemService;
 
     @GetMapping("/conversas/{conversaId}")
-    public ResponseEntity<Page<MensagemHistoricoProjection>> listarConversasDoUsuario(@PathVariable  UUID conversaId, String idUsuario, Pageable pageable){
-        return ResponseEntity.ok(mensagemService.listarHisotiricoMensagens(conversaId,"usuario1",pageable));
+    public ResponseEntity<Page<MensagemHistoricoProjection>> listarConversasDoUsuario(@PathVariable  UUID conversaId, @UsuarioLogado String sub, Pageable pageable){
+        return ResponseEntity.ok(mensagemService.listarHisotiricoMensagens(conversaId,sub,pageable));
     }
 
 }

@@ -6,15 +6,77 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <style>
-        :root { --primary: #075e54; --bg-chat: #e5ddd5; --sidebar-bg: #ffffff; --me-bg: #dcf8c6; --them-bg: #ffffff; }
+        :root {
+            --primary: #075e54;
+            --bg-chat: #e5ddd5;
+            --sidebar-bg: #ffffff;
+            --me-bg: #dcf8c6;
+            --them-bg: #ffffff;
+        }
 
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #d1d7db; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .app-container { display: flex; width: 95%; max-width: 1200px; height: 90vh; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #d1d7db;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* ── Loading Screen ── */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            background: #075e54;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+            gap: 16px;
+        }
+        #loading-screen .spinner {
+            width: 44px; height: 44px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        #loading-screen p { font-size: 15px; opacity: 0.85; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── App ── */
+        .app-container {
+            display: flex;
+            width: 95%;
+            max-width: 1200px;
+            height: 90vh;
+            background: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
 
         /* Sidebar */
         .sidebar { width: 350px; border-right: 1px solid #ddd; display: flex; flex-direction: column; background: var(--sidebar-bg); }
-        .sidebar-header { padding: 20px; background: #ededed; font-weight: bold; border-bottom: 1px solid #ddd; }
+        .sidebar-header { padding: 16px 20px; background: #ededed; border-bottom: 1px solid #ddd; display: flex; align-items: center; justify-content: space-between; }
+        .sidebar-header-info { display: flex; flex-direction: column; gap: 2px; }
+        .sidebar-header-info strong { font-size: 14px; color: #111; }
+        .sidebar-header-info small { font-size: 11px; color: #777; }
+        #logout-btn {
+            background: none;
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #555;
+            transition: all 0.2s;
+        }
+        #logout-btn:hover { background: #f0f0f0; color: #333; }
         #lista-conversas { flex: 1; overflow-y: auto; }
         .conversa-item { padding: 15px; border-bottom: 1px solid #f2f2f2; cursor: pointer; transition: 0.3s; position: relative; }
         .conversa-item:hover { background: #f5f5f5; }
@@ -24,7 +86,6 @@
         /* Chat Area */
         .chat-area { flex: 1; display: flex; flex-direction: column; background: var(--bg-chat); position: relative; }
         .chat-header { padding: 15px 25px; background: #ededed; border-bottom: 1px solid #ddd; font-weight: bold; z-index: 10; }
-
         #chat-content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 5px; }
 
         /* Mensagens */
@@ -34,7 +95,7 @@
         .msg-time { font-size: 10px; color: #888; display: block; margin-top: 4px; text-align: right; }
 
         /* Divisor de Data */
-        .data-divider { display: flex; justify-content: center; margin: 15px 0; position: relative; width: 100%; }
+        .data-divider { display: flex; justify-content: center; margin: 15px 0; width: 100%; }
         .data-divider span { background: #e1f3fb; padding: 5px 15px; border-radius: 8px; font-size: 11px; color: #555; font-weight: 500; box-shadow: 0 1px 1px rgba(0,0,0,0.1); text-transform: uppercase; }
 
         /* Input */
@@ -46,9 +107,21 @@
 </head>
 <body>
 
-<div class="app-container">
+<!-- Tela de carregamento exibida durante redirect do Keycloak -->
+<div id="loading-screen">
+    <div class="spinner"></div>
+    <p id="loading-msg">Verificando autenticação...</p>
+</div>
+
+<div class="app-container" style="display:none;" id="main-app">
     <div class="sidebar">
-        <div class="sidebar-header">Conversas - <span id="user-display">Logando...</span></div>
+        <div class="sidebar-header">
+            <div class="sidebar-header-info">
+                <strong id="user-display">–</strong>
+                <small id="user-email">–</small>
+            </div>
+            <button id="logout-btn" onclick="keycloakLogout()">Sair</button>
+        </div>
         <div id="lista-conversas"></div>
     </div>
 
@@ -63,8 +136,261 @@
 </div>
 
 <script>
+    // ═══════════════════════════════════════════════════════════
+    //  CONFIGURAÇÃO KEYCLOAK
+    //  Ajuste as variáveis abaixo conforme seu ambiente
+    // ═══════════════════════════════════════════════════════════
+    const KC_CONFIG = {
+        issuer:       'http://localhost:8081/realms/chat-realm',      // URL base do realm
+        clientId:     'chat-service',                                   // Client ID cadastrado no Keycloak
+        redirectUri:  window.location.origin + window.location.pathname, // URL de retorno após login
+        scopes:       'openid profile email',                            // Scopes solicitados
+    };
+
+    // Endpoints derivados automaticamente do issuer
+    const KC_ENDPOINTS = {
+        auth:     KC_CONFIG.issuer + '/protocol/openid-connect/auth',
+        token:    KC_CONFIG.issuer + '/protocol/openid-connect/token',
+        logout:   KC_CONFIG.issuer + '/protocol/openid-connect/logout',
+        userinfo: KC_CONFIG.issuer + '/protocol/openid-connect/userinfo',
+    };
+
+    // ═══════════════════════════════════════════════════════════
+    //  PKCE HELPERS  (Authorization Code + PKCE — seguro para SPA)
+    // ═══════════════════════════════════════════════════════════
+    function base64urlEncode(buffer) {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+
+    async function generateCodeVerifier() {
+        const array = new Uint8Array(32);
+        crypto.getRandomValues(array);
+        return base64urlEncode(array);
+    }
+
+    async function generateCodeChallenge(verifier) {
+        const encoded = new TextEncoder().encode(verifier);
+        const digest  = await crypto.subtle.digest('SHA-256', encoded);
+        return base64urlEncode(digest);
+    }
+
+    function generateState() {
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        return base64urlEncode(array);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  FLUXO DE AUTENTICAÇÃO
+    // ═══════════════════════════════════════════════════════════
+
+    /** Redireciona para a tela de login do Keycloak */
+    async function redirectToKeycloakLogin() {
+        setLoading('Redirecionando para login...');
+
+        const codeVerifier    = await generateCodeVerifier();
+        const codeChallenge   = await generateCodeChallenge(codeVerifier);
+        const state           = generateState();
+
+        // Salva no sessionStorage para verificar no retorno
+        sessionStorage.setItem('pkce_verifier', codeVerifier);
+        sessionStorage.setItem('pkce_state',    state);
+
+        const params = new URLSearchParams({
+            response_type:          'code',
+            client_id:              KC_CONFIG.clientId,
+            redirect_uri:           KC_CONFIG.redirectUri,
+            scope:                  KC_CONFIG.scopes,
+            state:                  state,
+            code_challenge:         codeChallenge,
+            code_challenge_method:  'S256',
+        });
+
+        window.location.href = `${KC_ENDPOINTS.auth}?${params}`;
+    }
+
+    /** Troca o authorization_code pelo access_token */
+    async function exchangeCodeForToken(code, state) {
+        setLoading('Trocando código por token...');
+
+        const savedState    = sessionStorage.getItem('pkce_state');
+        const codeVerifier  = sessionStorage.getItem('pkce_verifier');
+
+        if (!savedState || state !== savedState) {
+            console.error('State inválido — possível ataque CSRF');
+            sessionStorage.clear();
+            return redirectToKeycloakLogin();
+        }
+
+        const body = new URLSearchParams({
+            grant_type:     'authorization_code',
+            client_id:      KC_CONFIG.clientId,
+            redirect_uri:   KC_CONFIG.redirectUri,
+            code:           code,
+            code_verifier:  codeVerifier,
+        });
+
+        try {
+            const res  = await fetch(KC_ENDPOINTS.token, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
+            });
+            const data = await res.json();
+
+            if (data.error) throw new Error(data.error_description || data.error);
+
+            // Salva tokens
+            sessionStorage.setItem('access_token',  data.access_token);
+            sessionStorage.setItem('id_token',      data.id_token || '');      // ← necessário para logout
+            sessionStorage.setItem('refresh_token', data.refresh_token || '');
+            sessionStorage.setItem('expires_at',    Date.now() + data.expires_in * 1000);
+
+            // Limpa params do PKCE
+            sessionStorage.removeItem('pkce_verifier');
+            sessionStorage.removeItem('pkce_state');
+
+            // Remove code e state da URL sem recarregar
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            return data.access_token;
+        } catch (err) {
+            console.error('Erro ao trocar código por token:', err);
+            sessionStorage.clear();
+            redirectToKeycloakLogin();
+        }
+    }
+
+    /** Retorna o access_token válido (renova via refresh_token se necessário) */
+    async function getValidToken() {
+        const expiresAt = parseInt(sessionStorage.getItem('expires_at') || '0');
+        const accessToken = sessionStorage.getItem('access_token');
+
+        // Token ainda válido (com margem de 30s)
+        if (accessToken && Date.now() < expiresAt - 30_000) {
+            return accessToken;
+        }
+
+        // Tenta renovar via refresh_token
+        const refreshToken = sessionStorage.getItem('refresh_token');
+        if (refreshToken) {
+            try {
+                const body = new URLSearchParams({
+                    grant_type:     'refresh_token',
+                    client_id:      KC_CONFIG.clientId,
+                    refresh_token:  refreshToken,
+                });
+                const res  = await fetch(KC_ENDPOINTS.token, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                });
+                const data = await res.json();
+                if (data.access_token) {
+                    sessionStorage.setItem('access_token',  data.access_token);
+                    sessionStorage.setItem('refresh_token', data.refresh_token || refreshToken);
+                    sessionStorage.setItem('expires_at',    Date.now() + data.expires_in * 1000);
+                    return data.access_token;
+                }
+            } catch (e) {
+                console.warn('Refresh falhou, redirecionando para login', e);
+            }
+        }
+
+        // Sem token válido → login
+        sessionStorage.clear();
+        redirectToKeycloakLogin();
+        return null;
+    }
+
+    /** Logout: invalida sessão no Keycloak e limpa storage */
+    function keycloakLogout() {
+        const idToken = sessionStorage.getItem('id_token'); // id_token correto para o hint
+        sessionStorage.clear();
+
+        const params = new URLSearchParams({
+            client_id:                KC_CONFIG.clientId,
+            post_logout_redirect_uri: KC_CONFIG.redirectUri,
+        });
+        // Só envia id_token_hint se tiver o id_token real (nunca o access_token)
+        if (idToken) params.set('id_token_hint', idToken);
+
+        window.location.href = `${KC_ENDPOINTS.logout}?${params}`;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  BOOTSTRAP — decide o fluxo ao carregar a página
+    // ═══════════════════════════════════════════════════════════
+    async function bootstrap() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code      = urlParams.get('code');
+        const state     = urlParams.get('state');
+        const error     = urlParams.get('error');
+
+        // Keycloak retornou erro
+        if (error) {
+            console.error('Erro do Keycloak:', error, urlParams.get('error_description'));
+            sessionStorage.clear();
+            return redirectToKeycloakLogin();
+        }
+
+        let token;
+
+        if (code && state) {
+            // Retorno do Keycloak com authorization_code
+            token = await exchangeCodeForToken(code, state);
+        } else {
+            // Verifica se já há token salvo
+            token = await getValidToken();
+        }
+
+        if (!token) return; // getValidToken já redirecionou
+
+        // ── Token válido: busca dados do usuário e inicia app ──
+        try {
+            setLoading('Carregando usuário...');
+            const userRes  = await fetch(KC_ENDPOINTS.userinfo, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const userInfo = await userRes.json();
+
+            document.getElementById('user-display').innerText = userInfo.preferred_username || userInfo.name || 'Usuário';
+            document.getElementById('user-email').innerText   = userInfo.email || '';
+
+            // Decodifica sub do JWT como ID do usuário
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            store.meuId   = payload.sub || userInfo.sub;
+
+            hideLoading();
+            connectWebSocket(token);
+            fetchConversas(token);
+        } catch (err) {
+            console.error('Erro ao buscar userinfo:', err);
+            sessionStorage.clear();
+            redirectToKeycloakLogin();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  HELPERS DE UI
+    // ═══════════════════════════════════════════════════════════
+    function setLoading(msg) {
+        document.getElementById('loading-screen').style.display = 'flex';
+        document.getElementById('loading-msg').innerText = msg;
+        document.getElementById('main-app').style.display = 'none';
+    }
+
+    function hideLoading() {
+        document.getElementById('loading-screen').style.display = 'none';
+        document.getElementById('main-app').style.display = 'flex';
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  LÓGICA DO CHAT  (original, adaptada para incluir Bearer)
+    // ═══════════════════════════════════════════════════════════
     const store = {
-        meuId: "usuario1",
+        meuId: null,
         conversaAtivaId: null,
         conversas: [],
         paginaAtual: 0,
@@ -75,78 +401,104 @@
 
     let stompClient = null;
 
-    // 1. Conexão WebSocket
-    function connectWebSocket() {
+
+    function connectWebSocket(token) {
         const socket = new SockJS('http://localhost:8080/ws-chat');
         stompClient = Stomp.over(socket);
-        stompClient.connect({}, () => {
-            document.getElementById('user-display').innerText = store.meuId;
-            stompClient.subscribe(`/queue/user.${store.meuId}`, (payload) => {
-                processarMensagemRecebida(JSON.parse(payload.body));
-            });
+        const headers = {
+            'Authorization': `Bearer ${token}`
+        };
+        stompClient.connect(
+            headers,
+            (frame) => {
+                console.log('Conectado ao WebSocket!');
+
+                stompClient.subscribe(`/queue/user.${store.meuId}`, (payload) => {
+                    processarMensagemRecebida(JSON.parse(payload.body));
+                });
+            },
+            (error) => {
+                console.error('Erro STOMP:', error);
+                if (error.headers && error.headers.message.includes("Token JWT inválido")) {
+                    getValidToken().then(newToken => {
+                        if (newToken) {
+                            console.log('Reconectando com novo token...');
+                            connectWebSocket(newToken);
+                        }
+                    });
+                }
+            }
+        );
+    }
+
+    async function apiFetch(url, options = {}) {
+        const token = await getValidToken();
+        if (!token) return null;
+
+        return fetch(url, {
+            ...options,
+            headers: {
+                ...options.headers,
+                'Authorization': `Bearer ${token}`,
+                'Content-Type':  'application/json',
+            },
         });
     }
 
-    // 2. Buscar Lista de Conversas do Usuário
     async function fetchConversas() {
         try {
-            const response = await fetch(`http://localhost:8080/participante/conversas`);
+            const response = await apiFetch(`http://localhost:8080/participante/conversas`);
+            if (!response) return;
             const data = await response.json();
             store.conversas = data.content.map(c => ({
-                id: c.conversa_id,
-                nome: c.nome_destinatario,
-                data: c.data_conversa,
-                unread: 0
+                id:    c.conversa_id,
+                nome:  c.nome_destinatario,
+                data:  c.data_conversa,
+                unread: 0,
             }));
             renderSidebar();
-        } catch (e) { console.error("Erro ao buscar conversas", e); }
+        } catch (e) { console.error('Erro ao buscar conversas', e); }
     }
 
-    // 3. Buscar Histórico de Mensagens (Paginado)
     async function fetchHistorico(conversaId, appendTop = false) {
         if (store.carregandoHistorico || (!store.temMaisMensagens && appendTop)) return;
-
         store.carregandoHistorico = true;
-        const container = document.getElementById('chat-content');
+        const container    = document.getElementById('chat-content');
         const scrollAnterior = container.scrollHeight;
 
         try {
-            const response = await fetch(`http://localhost:8080/mensagem/conversas/${conversaId}?idUsuario=${store.meuId}&page=${store.paginaAtual}&size=15&sort=data_envio,desc`);
-            const data = await response.json();
-            console.log("Primeira mensagem raw:", data.content[0]);
-
-            // Pegamos as mensagens e invertemos para a ordem cronológica
+            const response = await apiFetch(
+                `http://localhost:8080/mensagem/conversas/${conversaId}?idUsuario=${store.meuId}&page=${store.paginaAtual}&size=15&sort=data_envio,desc`
+            );
+            if (!response) return;
+            const data     = await response.json();
             const mensagens = data.content.reverse();
 
-            mensagens.forEach(m => {
-                renderizarMensagemNaTela(m, m.ehRemetente ? 'me' : 'them', appendTop);
-            });
+            mensagens.forEach(m => renderizarMensagemNaTela(m, m.ehRemetente ? 'me' : 'them', appendTop));
 
             store.temMaisMensagens = !data.last;
             store.paginaAtual++;
 
-            // Manter posição do scroll ao carregar mais
             if (appendTop) {
                 container.scrollTop = container.scrollHeight - scrollAnterior;
             } else if (store.paginaAtual === 1) {
                 container.scrollTop = container.scrollHeight;
             }
-        } catch (e) { console.error("Erro ao buscar histórico", e); }
+        } catch (e) { console.error('Erro ao buscar histórico', e); }
         store.carregandoHistorico = false;
     }
 
-    // 4. Selecionar Conversa e Abrir Chat
     function selecionarConversa(id) {
-        store.conversaAtivaId = id;
-        store.paginaAtual = 0;
-        store.temMaisMensagens = true;
-        store.ultimaDataRenderizada = null; // Reseta para nova conversa
+        store.conversaAtivaId       = id;
+        store.paginaAtual           = 0;
+        store.temMaisMensagens      = true;
+        store.ultimaDataRenderizada = null;
 
         document.getElementById('chat-content').innerHTML = '';
-        document.getElementById('messageInput').disabled = false;
-        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('messageInput').disabled  = false;
+        document.getElementById('sendBtn').disabled       = false;
 
-        const conv = store.conversas.find(c => c.id === id);
+        const conv  = store.conversas.find(c => c.id === id);
         conv.unread = 0;
         document.getElementById('chat-header').innerText = conv.nome;
 
@@ -155,13 +507,11 @@
     }
 
     function renderizarMensagemNaTela(msg, type, noTopo = false) {
-        const container = document.getElementById('chat-content');
-
+        const container  = document.getElementById('chat-content');
         const dataObjeto = new Date(msg.dataEnvio || msg.timestamp);
         const dataString = dataObjeto.toLocaleDateString();
         const horaString = dataObjeto.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        // Divisor de Data Inteligente
         if (!noTopo && dataString !== store.ultimaDataRenderizada) {
             inserirDivisorData(dataString);
             store.ultimaDataRenderizada = dataString;
@@ -181,28 +531,28 @@
 
     function inserirDivisorData(data) {
         const container = document.getElementById('chat-content');
-        const div = document.createElement('div');
-        div.className = 'data-divider';
-        const hoje = new Date().toLocaleDateString();
-        const texto = (data === hoje) ? 'Hoje' : data;
-        div.innerHTML = `<span>${texto}</span>`;
+        const div       = document.createElement('div');
+        div.className   = 'data-divider';
+        const hoje      = new Date().toLocaleDateString();
+        div.innerHTML   = `<span>${data === hoje ? 'Hoje' : data}</span>`;
         container.appendChild(div);
     }
 
-    // 6. Enviar Mensagem via STOMP
-    function sendMessage() {
+    async function sendMessage() {
         const input = document.getElementById('messageInput');
         if (!input.value.trim()) return;
 
         const payload = {
-            conversaId: store.conversaAtivaId,
+            conversaId:       store.conversaAtivaId,
             usuarioRemetente: store.meuId,
-            mensagem: input.value,
-            timestamp: new Date().toISOString()
+            mensagem:         input.value,
+            timestamp:        new Date().toISOString(),
         };
 
-        stompClient.send("/app/enviar-mensagem-privada.send", {}, JSON.stringify(payload));
-        renderizarMensagemNaTela(payload, 'me'); // Renderiza localmente
+        // Garante token atualizado no header STOMP antes de enviar
+        const token = await getValidToken();
+        stompClient.send('/app/enviar-mensagem-privada.send', { Authorization: `Bearer ${token}` }, JSON.stringify(payload));
+        renderizarMensagemNaTela(payload, 'me');
         input.value = '';
     }
 
@@ -214,32 +564,30 @@
             if (c) {
                 c.unread++;
                 renderSidebar();
-                document.title = "(*) Nova Mensagem!";
-                setTimeout(() => document.title = "Chat Profissional", 3000);
+                document.title = '(*) Nova Mensagem!';
+                setTimeout(() => document.title = 'Chat Profissional', 3000);
             }
         }
     }
 
     function renderSidebar() {
-        const lista = document.getElementById('lista-conversas');
+        const lista   = document.getElementById('lista-conversas');
         lista.innerHTML = store.conversas.map(c => `
-            <div class="conversa-item ${store.conversaAtivaId === c.id ? 'active' : ''}" onclick="selecionarConversa('${c.id}')">
-                <span style="font-weight: 500;">${c.nome}</span>
-                ${c.unread > 0 ? `<span class="badge">${c.unread}</span>` : ''}
-            </div>
-        `).join('');
+        <div class="conversa-item ${store.conversaAtivaId === c.id ? 'active' : ''}" onclick="selecionarConversa('${c.id}')">
+            <span style="font-weight:500;">${c.nome}</span>
+            ${c.unread > 0 ? `<span class="badge">${c.unread}</span>` : ''}
+        </div>
+    `).join('');
     }
 
-    document.getElementById('chat-content').onscroll = function() {
+    document.getElementById('chat-content').onscroll = function () {
         if (this.scrollTop === 0 && store.temMaisMensagens) {
             fetchHistorico(store.conversaAtivaId, true);
         }
     };
 
-    window.onload = () => {
-        connectWebSocket();
-        fetchConversas();
-    };
+    // ── Inicia tudo ──
+    window.onload = bootstrap;
 </script>
 </body>
 </html>
