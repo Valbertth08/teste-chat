@@ -17,7 +17,9 @@ public class MensagemServiceImpl implements MensagemService {
     private MensagemRepository mensagemRepository;
 
     @Override
-    public Page<MensagemHistoricoProjection> listarHisotiricoMensagens(UUID conversaId, String idUsuario, Pageable pageable) {
+    public Page<MensagemHistoricoProjection> listarHistoricoMensagens(UUID conversaId, String idUsuario, Pageable pageable) {
         return mensagemRepository.buscarHistorico(conversaId,idUsuario, pageable);
     }
+
+
 }
