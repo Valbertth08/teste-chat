@@ -24,7 +24,7 @@ public class MensagemController {
     private MensagemService mensagemService;
 
     @GetMapping("/conversas/{conversaId}")
-    public ResponseEntity<Page<MensagemHistoricoProjection>> listarConversasDoUsuario(@PathVariable  UUID conversaId, @UsuarioLogado String sub, Pageable pageable){
+    public ResponseEntity<Page<MensagemHistoricoProjection>> listarMensagensDoUsuario(@PathVariable  UUID conversaId, @UsuarioLogado String sub, Pageable pageable){
         return ResponseEntity.ok(mensagemService.listarHisotiricoMensagens(conversaId,sub,pageable));
     }
 
