@@ -77,6 +77,103 @@
             transition: all 0.2s;
         }
         #logout-btn:hover { background: #f0f0f0; color: #333; }
+
+        /* ── Barra de busca de usuários ── */
+        .sidebar-search {
+            padding: 10px 12px;
+            background: #f7f7f7;
+            border-bottom: 1px solid #e8e8e8;
+            position: relative;
+        }
+        .sidebar-search-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sidebar-search input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            font-size: 13px;
+            outline: none;
+            background: white;
+            transition: border-color 0.2s;
+        }
+        .sidebar-search input:focus { border-color: #075e54; }
+        #btn-nova-conversa {
+            background: #075e54;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 20px;
+            flex-shrink: 0;
+            transition: background 0.2s;
+            padding: 0;
+        }
+        #btn-nova-conversa:hover { background: #064a43; }
+
+        /* Dropdown de resultados */
+        #resultados-busca {
+            display: none;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-top: 8px;
+            max-height: 260px;
+            overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        #resultados-busca.visible { display: block; }
+        .resultado-item {
+            padding: 10px 14px;
+            cursor: pointer;
+            border-bottom: 1px solid #f2f2f2;
+            transition: background 0.15s;
+        }
+        .resultado-item:last-child { border-bottom: none; }
+        .resultado-item:hover { background: #f0f7f6; }
+        .resultado-nome {
+            font-size: 13px;
+            font-weight: 600;
+            color: #111;
+        }
+        .resultado-detalhe {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+        .resultado-empty {
+            padding: 14px;
+            text-align: center;
+            font-size: 13px;
+            color: #aaa;
+        }
+        .resultado-loading {
+            padding: 14px;
+            text-align: center;
+            font-size: 13px;
+            color: #888;
+        }
+        .resultado-loading::after {
+            content: '';
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #ccc;
+            border-top-color: #075e54;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
         #lista-conversas { flex: 1; overflow-y: auto; }
         .conversa-item { padding: 15px; border-bottom: 1px solid #f2f2f2; cursor: pointer; transition: 0.3s; position: relative; }
         .conversa-item:hover { background: #f5f5f5; }
@@ -122,6 +219,23 @@
             </div>
             <button id="logout-btn" onclick="keycloakLogout()">Sair</button>
         </div>
+
+        <!-- ── Busca de usuários para nova conversa ── -->
+        <div class="sidebar-search">
+            <div class="sidebar-search-row">
+                <input
+                        type="text"
+                        id="busca-usuario-input"
+                        placeholder="Buscar usuário..."
+                        autocomplete="off"
+                        oninput="onBuscaUsuarioInput()"
+                        onfocus="onBuscaUsuarioInput()"
+                >
+                <button id="btn-nova-conversa" title="Nova conversa" onclick="toggleBuscaUsuario()">＋</button>
+            </div>
+            <div id="resultados-busca"></div>
+        </div>
+
         <div id="lista-conversas"></div>
     </div>
 
@@ -138,16 +252,14 @@
 <script>
     // ═══════════════════════════════════════════════════════════
     //  CONFIGURAÇÃO KEYCLOAK
-    //  Ajuste as variáveis abaixo conforme seu ambiente
     // ═══════════════════════════════════════════════════════════
     const KC_CONFIG = {
-        issuer:       'http://localhost:8081/realms/chat-realm',      // URL base do realm
-        clientId:     'chat-service',                                   // Client ID cadastrado no Keycloak
-        redirectUri:  window.location.origin + window.location.pathname, // URL de retorno após login
-        scopes:       'openid profile email',                            // Scopes solicitados
+        issuer:       'http://localhost:8081/realms/chat-realm',
+        clientId:     'chat-service',
+        redirectUri:  window.location.origin + window.location.pathname,
+        scopes:       'openid profile email',
     };
 
-    // Endpoints derivados automaticamente do issuer
     const KC_ENDPOINTS = {
         auth:     KC_CONFIG.issuer + '/protocol/openid-connect/auth',
         token:    KC_CONFIG.issuer + '/protocol/openid-connect/token',
@@ -156,25 +268,22 @@
     };
 
     // ═══════════════════════════════════════════════════════════
-    //  PKCE HELPERS  (Authorization Code + PKCE — seguro para SPA)
+    //  PKCE HELPERS
     // ═══════════════════════════════════════════════════════════
     function base64urlEncode(buffer) {
         return btoa(String.fromCharCode(...new Uint8Array(buffer)))
             .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     }
-
     async function generateCodeVerifier() {
         const array = new Uint8Array(32);
         crypto.getRandomValues(array);
         return base64urlEncode(array);
     }
-
     async function generateCodeChallenge(verifier) {
         const encoded = new TextEncoder().encode(verifier);
         const digest  = await crypto.subtle.digest('SHA-256', encoded);
         return base64urlEncode(digest);
     }
-
     function generateState() {
         const array = new Uint8Array(16);
         crypto.getRandomValues(array);
@@ -184,76 +293,51 @@
     // ═══════════════════════════════════════════════════════════
     //  FLUXO DE AUTENTICAÇÃO
     // ═══════════════════════════════════════════════════════════
-
-    /** Redireciona para a tela de login do Keycloak */
     async function redirectToKeycloakLogin() {
         setLoading('Redirecionando para login...');
-
-        const codeVerifier    = await generateCodeVerifier();
-        const codeChallenge   = await generateCodeChallenge(codeVerifier);
-        const state           = generateState();
-
-        // Salva no sessionStorage para verificar no retorno
+        const codeVerifier  = await generateCodeVerifier();
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
+        const state         = generateState();
         sessionStorage.setItem('pkce_verifier', codeVerifier);
         sessionStorage.setItem('pkce_state',    state);
-
         const params = new URLSearchParams({
-            response_type:          'code',
-            client_id:              KC_CONFIG.clientId,
-            redirect_uri:           KC_CONFIG.redirectUri,
-            scope:                  KC_CONFIG.scopes,
-            state:                  state,
-            code_challenge:         codeChallenge,
-            code_challenge_method:  'S256',
+            response_type:         'code',
+            client_id:             KC_CONFIG.clientId,
+            redirect_uri:          KC_CONFIG.redirectUri,
+            scope:                 KC_CONFIG.scopes,
+            state,
+            code_challenge:        codeChallenge,
+            code_challenge_method: 'S256',
         });
-
         window.location.href = `${KC_ENDPOINTS.auth}?${params}`;
     }
 
-    /** Troca o authorization_code pelo access_token */
     async function exchangeCodeForToken(code, state) {
         setLoading('Trocando código por token...');
-
-        const savedState    = sessionStorage.getItem('pkce_state');
-        const codeVerifier  = sessionStorage.getItem('pkce_verifier');
-
+        const savedState   = sessionStorage.getItem('pkce_state');
+        const codeVerifier = sessionStorage.getItem('pkce_verifier');
         if (!savedState || state !== savedState) {
-            console.error('State inválido — possível ataque CSRF');
             sessionStorage.clear();
             return redirectToKeycloakLogin();
         }
-
         const body = new URLSearchParams({
-            grant_type:     'authorization_code',
-            client_id:      KC_CONFIG.clientId,
-            redirect_uri:   KC_CONFIG.redirectUri,
-            code:           code,
-            code_verifier:  codeVerifier,
+            grant_type:    'authorization_code',
+            client_id:     KC_CONFIG.clientId,
+            redirect_uri:  KC_CONFIG.redirectUri,
+            code,
+            code_verifier: codeVerifier,
         });
-
         try {
-            const res  = await fetch(KC_ENDPOINTS.token, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body,
-            });
+            const res  = await fetch(KC_ENDPOINTS.token, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
             const data = await res.json();
-
             if (data.error) throw new Error(data.error_description || data.error);
-
-            // Salva tokens
             sessionStorage.setItem('access_token',  data.access_token);
-            sessionStorage.setItem('id_token',      data.id_token || '');      // ← necessário para logout
+            sessionStorage.setItem('id_token',      data.id_token || '');
             sessionStorage.setItem('refresh_token', data.refresh_token || '');
             sessionStorage.setItem('expires_at',    Date.now() + data.expires_in * 1000);
-
-            // Limpa params do PKCE
             sessionStorage.removeItem('pkce_verifier');
             sessionStorage.removeItem('pkce_state');
-
-            // Remove code e state da URL sem recarregar
             window.history.replaceState({}, document.title, window.location.pathname);
-
             return data.access_token;
         } catch (err) {
             console.error('Erro ao trocar código por token:', err);
@@ -262,30 +346,15 @@
         }
     }
 
-    /** Retorna o access_token válido (renova via refresh_token se necessário) */
     async function getValidToken() {
-        const expiresAt = parseInt(sessionStorage.getItem('expires_at') || '0');
+        const expiresAt   = parseInt(sessionStorage.getItem('expires_at') || '0');
         const accessToken = sessionStorage.getItem('access_token');
-
-        // Token ainda válido (com margem de 30s)
-        if (accessToken && Date.now() < expiresAt - 30_000) {
-            return accessToken;
-        }
-
-        // Tenta renovar via refresh_token
+        if (accessToken && Date.now() < expiresAt - 30_000) return accessToken;
         const refreshToken = sessionStorage.getItem('refresh_token');
         if (refreshToken) {
             try {
-                const body = new URLSearchParams({
-                    grant_type:     'refresh_token',
-                    client_id:      KC_CONFIG.clientId,
-                    refresh_token:  refreshToken,
-                });
-                const res  = await fetch(KC_ENDPOINTS.token, {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body,
-                });
+                const body = new URLSearchParams({ grant_type: 'refresh_token', client_id: KC_CONFIG.clientId, refresh_token: refreshToken });
+                const res  = await fetch(KC_ENDPOINTS.token, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
                 const data = await res.json();
                 if (data.access_token) {
                     sessionStorage.setItem('access_token',  data.access_token);
@@ -293,75 +362,40 @@
                     sessionStorage.setItem('expires_at',    Date.now() + data.expires_in * 1000);
                     return data.access_token;
                 }
-            } catch (e) {
-                console.warn('Refresh falhou, redirecionando para login', e);
-            }
+            } catch (e) { console.warn('Refresh falhou', e); }
         }
-
-        // Sem token válido → login
         sessionStorage.clear();
         redirectToKeycloakLogin();
         return null;
     }
 
-    /** Logout: invalida sessão no Keycloak e limpa storage */
     function keycloakLogout() {
-        const idToken = sessionStorage.getItem('id_token'); // id_token correto para o hint
+        const idToken = sessionStorage.getItem('id_token');
         sessionStorage.clear();
-
-        const params = new URLSearchParams({
-            client_id:                KC_CONFIG.clientId,
-            post_logout_redirect_uri: KC_CONFIG.redirectUri,
-        });
-        // Só envia id_token_hint se tiver o id_token real (nunca o access_token)
+        const params = new URLSearchParams({ client_id: KC_CONFIG.clientId, post_logout_redirect_uri: KC_CONFIG.redirectUri });
         if (idToken) params.set('id_token_hint', idToken);
-
         window.location.href = `${KC_ENDPOINTS.logout}?${params}`;
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  BOOTSTRAP — decide o fluxo ao carregar a página
+    //  BOOTSTRAP
     // ═══════════════════════════════════════════════════════════
     async function bootstrap() {
         const urlParams = new URLSearchParams(window.location.search);
         const code      = urlParams.get('code');
         const state     = urlParams.get('state');
         const error     = urlParams.get('error');
-
-        // Keycloak retornou erro
-        if (error) {
-            console.error('Erro do Keycloak:', error, urlParams.get('error_description'));
-            sessionStorage.clear();
-            return redirectToKeycloakLogin();
-        }
-
-        let token;
-
-        if (code && state) {
-            // Retorno do Keycloak com authorization_code
-            token = await exchangeCodeForToken(code, state);
-        } else {
-            // Verifica se já há token salvo
-            token = await getValidToken();
-        }
-
-        if (!token) return; // getValidToken já redirecionou
-
-        // ── Token válido: busca dados do usuário e inicia app ──
+        if (error) { sessionStorage.clear(); return redirectToKeycloakLogin(); }
+        let token = code && state ? await exchangeCodeForToken(code, state) : await getValidToken();
+        if (!token) return;
         try {
             setLoading('Carregando usuário...');
-            const userRes  = await fetch(KC_ENDPOINTS.userinfo, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const userRes  = await fetch(KC_ENDPOINTS.userinfo, { headers: { Authorization: `Bearer ${token}` } });
             const userInfo = await userRes.json();
-
             document.getElementById('user-display').innerText = userInfo.preferred_username || userInfo.name || 'Usuário';
             document.getElementById('user-email').innerText   = userInfo.email || '';
-
-            // Decodifica sub do JWT como ID do usuário
             const payload = JSON.parse(atob(token.split('.')[1]));
-            store.meuId   = payload.sub || userInfo.sub;
-
+            store.meuId   = payload.email || userInfo.email || payload.sub;
             hideLoading();
             connectWebSocket(token);
             fetchConversas(token);
@@ -380,14 +414,119 @@
         document.getElementById('loading-msg').innerText = msg;
         document.getElementById('main-app').style.display = 'none';
     }
-
     function hideLoading() {
         document.getElementById('loading-screen').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  LÓGICA DO CHAT  (original, adaptada para incluir Bearer)
+    //  BUSCA DE USUÁRIOS + NOVA CONVERSA
+    // ═══════════════════════════════════════════════════════════
+    let buscaTimeout = null;
+    let buscaVisivel = false;
+
+    function toggleBuscaUsuario() {
+        const input = document.getElementById('busca-usuario-input');
+        buscaVisivel = !buscaVisivel;
+        if (buscaVisivel) {
+            input.focus();
+        } else {
+            fecharResultados();
+            input.value = '';
+        }
+    }
+
+    function onBuscaUsuarioInput() {
+        const filtro = document.getElementById('busca-usuario-input').value.trim();
+        clearTimeout(buscaTimeout);
+        if (!filtro) { fecharResultados(); return; }
+        mostrarLoadingBusca();
+        buscaTimeout = setTimeout(() => buscarUsuarios(filtro), 400);
+    }
+
+    function mostrarLoadingBusca() {
+        const el = document.getElementById('resultados-busca');
+        el.innerHTML = '<div class="resultado-loading">Buscando</div>';
+        el.classList.add('visible');
+    }
+
+    function fecharResultados() {
+        const el = document.getElementById('resultados-busca');
+        el.classList.remove('visible');
+        el.innerHTML = '';
+    }
+
+    async function buscarUsuarios(filtro) {
+        try {
+            const response = await apiFetch(`http://localhost:8080/usuario?filtro=${encodeURIComponent(filtro)}`);
+            if (!response) return;
+            const usuarios = await response.json();
+            renderResultadosBusca(usuarios);
+        } catch (e) {
+            console.error('Erro ao buscar usuários:', e);
+            const el = document.getElementById('resultados-busca');
+            el.innerHTML = '<div class="resultado-empty">Erro ao buscar usuários.</div>';
+        }
+    }
+
+    function renderResultadosBusca(usuarios) {
+        const el = document.getElementById('resultados-busca');
+        if (!usuarios || usuarios.length === 0) {
+            el.innerHTML = '<div class="resultado-empty">Nenhum usuário encontrado.</div>';
+            el.classList.add('visible');
+            return;
+        }
+        el.innerHTML = usuarios.map(u => `
+            <div class="resultado-item" onclick="iniciarConversa('${escapeHtml(u.login)}', '${escapeHtml(u.nome)}')">
+                <div class="resultado-nome">${escapeHtml(u.nome)}</div>
+                <div class="resultado-detalhe">${escapeHtml(u.unidade || '')}${u.matricula ? ' · Matrícula: ' + u.matricula : ''}</div>
+            </div>
+        `).join('');
+        el.classList.add('visible');
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    /**
+     * Inicia uma conversa com o usuário selecionado.
+     * Se já existir uma conversa com esse usuário na sidebar, só abre ela.
+     * Caso contrário, chama a API para criar/obter a conversa e adiciona à lista.
+     */
+    function iniciarConversa(usuarioId, usuarioNome) {
+        fecharResultados();
+        document.getElementById('busca-usuario-input').value = '';
+        let conv = store.conversas.find(c => c.nome === usuarioNome);
+
+        if (!conv) {
+            conv = {
+                id: null,
+                nome: usuarioNome,
+                destinatarioId: usuarioId,
+            };
+            store.conversas.unshift(conv);
+        }
+        store.conversaAtivaId = conv.id;
+        store.destinatarioAtual = usuarioId;
+        document.getElementById('chat-content').innerHTML = '';
+        document.getElementById('messageInput').disabled = false;
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('chat-header').innerText = usuarioNome;
+        renderSidebar();
+    }
+
+    // Fecha resultados ao clicar fora
+    document.addEventListener('click', function(e) {
+        const area = document.querySelector('.sidebar-search');
+        if (area && !area.contains(e.target)) {
+            fecharResultados();
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    //  LÓGICA DO CHAT
     // ═══════════════════════════════════════════════════════════
     const store = {
         meuId: null,
@@ -401,18 +540,14 @@
 
     let stompClient = null;
 
-
     function connectWebSocket(token) {
         const socket = new SockJS('http://localhost:8080/ws-chat');
         stompClient = Stomp.over(socket);
-        const headers = {
-            'Authorization': `Bearer ${token}`
-        };
+        const headers = { 'Authorization': `Bearer ${token}` };
         stompClient.connect(
             headers,
-            (frame) => {
+            () => {
                 console.log('Conectado ao WebSocket!');
-
                 stompClient.subscribe(`/queue/user.${store.meuId}`, (payload) => {
                     processarMensagemRecebida(JSON.parse(payload.body));
                 });
@@ -421,10 +556,7 @@
                 console.error('Erro STOMP:', error);
                 if (error.headers && error.headers.message.includes("Token JWT inválido")) {
                     getValidToken().then(newToken => {
-                        if (newToken) {
-                            console.log('Reconectando com novo token...');
-                            connectWebSocket(newToken);
-                        }
+                        if (newToken) connectWebSocket(newToken);
                     });
                 }
             }
@@ -434,7 +566,6 @@
     async function apiFetch(url, options = {}) {
         const token = await getValidToken();
         if (!token) return null;
-
         return fetch(url, {
             ...options,
             headers: {
@@ -463,9 +594,8 @@
     async function fetchHistorico(conversaId, appendTop = false) {
         if (store.carregandoHistorico || (!store.temMaisMensagens && appendTop)) return;
         store.carregandoHistorico = true;
-        const container    = document.getElementById('chat-content');
+        const container      = document.getElementById('chat-content');
         const scrollAnterior = container.scrollHeight;
-
         try {
             const response = await apiFetch(
                 `http://localhost:8080/mensagem/conversas/${conversaId}?idUsuario=${store.meuId}&page=${store.paginaAtual}&size=15&sort=data_envio,desc`
@@ -473,12 +603,9 @@
             if (!response) return;
             const data     = await response.json();
             const mensagens = data.content.reverse();
-
             mensagens.forEach(m => renderizarMensagemNaTela(m, m.ehRemetente ? 'me' : 'them', appendTop));
-
             store.temMaisMensagens = !data.last;
             store.paginaAtual++;
-
             if (appendTop) {
                 container.scrollTop = container.scrollHeight - scrollAnterior;
             } else if (store.paginaAtual === 1) {
@@ -489,19 +616,19 @@
     }
 
     function selecionarConversa(id) {
-        store.conversaAtivaId       = id;
-        store.paginaAtual           = 0;
-        store.temMaisMensagens      = true;
+        const conv = store.conversas.find(c => c.id === id);
+        if(!conv) return;
+        store.conversaAtivaId = id;
+        store.destinatarioAtual = conv.nome; // Ou conv.destinatarioId se você salvar no fetch inicial
+        store.paginaAtual = 0;
+        store.temMaisMensagens = true;
         store.ultimaDataRenderizada = null;
-
         document.getElementById('chat-content').innerHTML = '';
-        document.getElementById('messageInput').disabled  = false;
-        document.getElementById('sendBtn').disabled       = false;
-
-        const conv  = store.conversas.find(c => c.id === id);
-        conv.unread = 0;
+        document.getElementById('messageInput').disabled = false;
+        document.getElementById('sendBtn').disabled = false;
         document.getElementById('chat-header').innerText = conv.nome;
 
+        conv.unread = 0;
         renderSidebar();
         fetchHistorico(id);
     }
@@ -511,16 +638,13 @@
         const dataObjeto = new Date(msg.dataEnvio || msg.timestamp);
         const dataString = dataObjeto.toLocaleDateString();
         const horaString = dataObjeto.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
         if (!noTopo && dataString !== store.ultimaDataRenderizada) {
             inserirDivisorData(dataString);
             store.ultimaDataRenderizada = dataString;
         }
-
         const div = document.createElement('div');
         div.className = `msg ${type}`;
         div.innerHTML = `<div>${msg.mensagem}</div><span class="msg-time">${horaString}</span>`;
-
         if (noTopo) {
             container.prepend(div);
         } else {
@@ -541,18 +665,23 @@
     async function sendMessage() {
         const input = document.getElementById('messageInput');
         if (!input.value.trim()) return;
-
         const payload = {
-            conversaId:       store.conversaAtivaId,
             usuarioRemetente: store.meuId,
-            mensagem:         input.value,
-            timestamp:        new Date().toISOString(),
+            usuarioDestinatario: store.destinatarioAtual,
+            mensagem: input.value,
+            conversaId: store.conversaAtivaId
         };
-
-        // Garante token atualizado no header STOMP antes de enviar
         const token = await getValidToken();
-        stompClient.send('/app/enviar-mensagem-privada.send', { Authorization: `Bearer ${token}` }, JSON.stringify(payload));
-        renderizarMensagemNaTela(payload, 'me');
+        stompClient.send(
+            '/app/enviar-mensagem-privada.send',
+            { Authorization: `Bearer ${token}` },
+            JSON.stringify(payload)
+        );
+        renderizarMensagemNaTela({
+            mensagem: payload.mensagem,
+            dataEnvio: new Date().toISOString()
+        }, 'me');
+
         input.value = '';
     }
 
@@ -571,13 +700,13 @@
     }
 
     function renderSidebar() {
-        const lista   = document.getElementById('lista-conversas');
+        const lista = document.getElementById('lista-conversas');
         lista.innerHTML = store.conversas.map(c => `
-        <div class="conversa-item ${store.conversaAtivaId === c.id ? 'active' : ''}" onclick="selecionarConversa('${c.id}')">
-            <span style="font-weight:500;">${c.nome}</span>
-            ${c.unread > 0 ? `<span class="badge">${c.unread}</span>` : ''}
-        </div>
-    `).join('');
+            <div class="conversa-item ${store.conversaAtivaId === c.id ? 'active' : ''}" onclick="selecionarConversa('${c.id}')">
+                <span style="font-weight:500;">${c.nome}</span>
+                ${c.unread > 0 ? `<span class="badge">${c.unread}</span>` : ''}
+            </div>
+        `).join('');
     }
 
     document.getElementById('chat-content').onscroll = function () {
@@ -586,7 +715,6 @@
         }
     };
 
-    // ── Inicia tudo ──
     window.onload = bootstrap;
 </script>
 </body>
