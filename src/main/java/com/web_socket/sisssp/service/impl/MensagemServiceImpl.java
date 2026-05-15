@@ -21,5 +21,10 @@ public class MensagemServiceImpl implements MensagemService {
         return mensagemRepository.buscarHistorico(conversaId,idUsuario, pageable);
     }
 
+    @Override
+    public void marcaMensagensComoLida(UUID conversaId, String idUsuario) {
+
+    }
+
 
 }

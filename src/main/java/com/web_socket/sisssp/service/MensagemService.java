@@ -7,5 +7,7 @@ import org.springframework.data.domain.Pageable;
 import java.util.UUID;
 
 public interface MensagemService {
-    Page<MensagemHistoricoProjection> listarHisotiricoMensagens(UUID conversaId, String idUsuario, Pageable pageable);
+    Page<MensagemHistoricoProjection> listarHistoricoMensagens(UUID conversaId, String idUsuario, Pageable pageable);
+
+     void marcaMensagensComoLida(UUID conversaId, String idUsuario);
 }

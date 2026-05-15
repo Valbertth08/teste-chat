@@ -5,6 +5,7 @@ import com.web_socket.sisssp.domain.Mensagem;
 import com.web_socket.sisssp.domain.Participante;
 import com.web_socket.sisssp.dto.MensagemPrivadaEntradaDTO;
 import com.web_socket.sisssp.dto.MensagemPrivadaRespostaDTO;
+import com.web_socket.sisssp.enums.StatusMensagem;
 import com.web_socket.sisssp.enums.TipoConversa;
 import com.web_socket.sisssp.repository.ConversaRepository;
 import com.web_socket.sisssp.repository.MensagemRepository;
@@ -45,6 +46,7 @@ public class ChatService {
         mensagem.setUsuarioRemetente(authenticatedSenderId);
         mensagem.setMensagem(dados.mensagem());
         mensagem.setDataEnvio(LocalDateTime.now());
+        mensagem.setStatus(StatusMensagem.NAO_LIDA);
 
         mensagemRepository.save(mensagem);
 

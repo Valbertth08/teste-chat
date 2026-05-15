@@ -1,5 +1,6 @@
 package com.web_socket.sisssp.domain;
 
+import com.web_socket.sisssp.enums.StatusMensagem;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -22,6 +23,9 @@ public class Mensagem {
     @Column(name = "mensagem", nullable = false)
     private String mensagem;
     private LocalDateTime dataEnvio;
+
+    @Enumerated(EnumType.STRING)
+    private StatusMensagem status;
 
     public Mensagem() {
     }
@@ -64,5 +68,13 @@ public class Mensagem {
 
     public void setDataEnvio(LocalDateTime dataEnvio) {
         this.dataEnvio = dataEnvio;
+    }
+
+    public StatusMensagem getStatus() {
+        return status;
+    }
+
+    public void setStatus(StatusMensagem status) {
+        this.status = status;
     }
 }
