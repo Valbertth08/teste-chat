@@ -1,6 +1,7 @@
 package com.web_socket.sisssp.controller.rest;
 
 import com.web_socket.sisssp.anotations.UsuarioLogado;
+import com.web_socket.sisssp.dto.RespostaUsuarioLogadoDTO;
 import com.web_socket.sisssp.projection.ConversaUsuarioProjection;
 
 import com.web_socket.sisssp.service.ParticipanteService;
@@ -22,8 +23,9 @@ public class ParticipanteController {
     private ParticipanteService participanteService;
 
     @GetMapping("/conversas")
-    public ResponseEntity<Page<ConversaUsuarioProjection>> listarConversasDoUsuario(@UsuarioLogado String sub, Pageable pageable) {
-        return ResponseEntity.ok(participanteService.listarConversasDoUsuario(sub, pageable));
+    public ResponseEntity<Page<ConversaUsuarioProjection>> listarConversasDoUsuario(@UsuarioLogado RespostaUsuarioLogadoDTO dados, Pageable pageable) {
+        System.out.println("ID do usuário logado: " + dados.sub());
+        return ResponseEntity.ok(participanteService.listarConversasDoUsuario(dados.sub(), pageable));
 
     }
 

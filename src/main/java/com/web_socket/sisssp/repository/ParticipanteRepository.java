@@ -31,7 +31,7 @@ public interface ParticipanteRepository extends JpaRepository<Participante, UUID
             c.id AS conversa_id,
             c.data_conversa,
             c.tipo_conversa,
-            p2.usuario_externo_id AS nome_destinatario
+            p2.nome AS nome_destinatario
         FROM public.tb_conversas c
         JOIN public.tb_participantes p1 ON c.id = p1.conversa_id
         JOIN public.tb_participantes p2 ON c.id = p2.conversa_id

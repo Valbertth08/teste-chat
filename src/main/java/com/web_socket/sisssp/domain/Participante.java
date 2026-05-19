@@ -23,10 +23,11 @@ public class Participante {
     public Participante() {
     }
 
-    public Participante(Conversa conversa, String usuarioExternoId, LocalDateTime dataEntrada) {;
+    public Participante(Conversa conversa, String usuarioExternoId, LocalDateTime dataEntrada, String nome) {;
         this.conversa = conversa;
         this.usuarioExternoId = usuarioExternoId;
         this.dataEntrada = dataEntrada;
+        this.nome = nome;
     }
 
     public UUID getId() {
