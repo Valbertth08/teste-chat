@@ -31,20 +31,20 @@ public class ChatService {
     private  MensagemRepository mensagemRepository;
 
     @Transactional
-    public MensagemPrivadaRespostaDTO salvarMensagemPrivada(MensagemPrivadaEntradaDTO dados, String authenticatedSenderId) {
+    public MensagemPrivadaRespostaDTO salvarMensagemPrivada(String usuarioRemetente,String nomeUsuarioRemetente, String usuarioDestinatario, String nomeUsuarioDestinatario, UUID conversaId, String conteudo) {
         Conversa conversa;
 
-        if (dados.conversaId() != null) {
-            conversa = conversaRepository.findById(dados.conversaId())
+        if (conversaId != null) {
+            conversa = conversaRepository.findById(conversaId)
                     .orElseThrow(() -> new RuntimeException("Conversa não encontrada"));
         } else {
-            conversa = obterOuCriarConversa(authenticatedSenderId, dados.usuarioDestinatario());
+            conversa = obterOuCriarConversa(usuarioRemetente, nomeUsuarioRemetente, usuarioDestinatario, nomeUsuarioDestinatario);
         }
 
         Mensagem mensagem = new Mensagem();
         mensagem.setConversa(conversa);
-        mensagem.setUsuarioRemetente(authenticatedSenderId);
-        mensagem.setMensagem(dados.mensagem());
+        mensagem.setUsuarioRemetente(usuarioRemetente);
+        mensagem.setMensagem(conteudo);
         mensagem.setDataEnvio(LocalDateTime.now());
         mensagem.setStatus(StatusMensagem.NAO_LIDA);
 
@@ -52,27 +52,28 @@ public class ChatService {
 
         return new MensagemPrivadaRespostaDTO(
                 mensagem.getId(),
-                authenticatedSenderId,
-                dados.usuarioDestinatario(),
+                usuarioRemetente,
+                usuarioDestinatario,
                 mensagem.getMensagem(),
                 conversa.getId(),
-                mensagem.getDataEnvio()
+                mensagem.getDataEnvio(),
+                nomeUsuarioDestinatario
         );
     }
-    private synchronized Conversa obterOuCriarConversa(String usuarioRemetente, String usuarioDestinatario) {
+    private synchronized Conversa obterOuCriarConversa(String usuarioRemetente, String nomeUsuarioRemetente, String usuarioDestinatario, String nomeUsuarioDestinatario) {
         return participanteRepository.encontrarIdDeConversaExistente(usuarioRemetente, usuarioDestinatario)
                 .map(uuid -> conversaRepository.findById(uuid)
                         .orElseThrow(() -> new RuntimeException("Erro de consistência: ID de conversa existe mas registro não encontrado")))
-                .orElseGet(() -> criarConversaPrivada(usuarioRemetente, usuarioDestinatario));
+                .orElseGet(() -> criarConversaPrivada(usuarioRemetente,nomeUsuarioRemetente, usuarioDestinatario,nomeUsuarioDestinatario));
     }
 
-    private Conversa criarConversaPrivada(String usuarioRemetente, String usuarioDestinatario) {
+    private Conversa criarConversaPrivada(String usuarioRemetente,String nomeUsuarioRemetente, String usuarioDestinatario, String nomeUsuarioDestinatario) {
         Conversa conv = new Conversa();
         conv.setTipoConversa(TipoConversa.PRIVADA);
         conv.setDataConversa(LocalDateTime.now());
         final Conversa savedConv = conversaRepository.saveAndFlush(conv);
-        Participante p1 = new Participante(savedConv, usuarioRemetente, LocalDateTime.now());
-        Participante p2 = new Participante( savedConv, usuarioDestinatario, LocalDateTime.now());
+        Participante p1 = new Participante(savedConv, usuarioRemetente, LocalDateTime.now(),nomeUsuarioRemetente);
+        Participante p2 = new Participante( savedConv, usuarioDestinatario, LocalDateTime.now(),nomeUsuarioDestinatario);
         participanteRepository.saveAllAndFlush(List.of(p1, p2));
         return savedConv;
     }
