@@ -18,7 +18,7 @@ public class Mensagem {
     @JoinColumn(name = "conversation_id")
     private Conversa conversa;
 
-    @Column(name = "usuario_remetende_id", nullable = false)
+    @Column(name = "usuario_remetente_id")
     private String usuarioRemetente;
     @Column(name = "mensagem", nullable = false)
     private String mensagem;

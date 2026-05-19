@@ -9,6 +9,7 @@ public record MensagemPrivadaRespostaDTO(
         String usuarioDestinatario,
         String mensagem,
         UUID conversaId,
-        LocalDateTime dataEnvio
+        LocalDateTime dataEnvio,
+        String nomeUsuarioDestinatario
 ) {
 }

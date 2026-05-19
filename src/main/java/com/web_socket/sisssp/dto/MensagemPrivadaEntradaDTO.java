@@ -4,8 +4,10 @@ import java.util.UUID;
 
 public record MensagemPrivadaEntradaDTO(
         String usuarioRemetente,
+        String nomeUsuarioRemetente,
         String usuarioDestinatario,
         String mensagem,
-        UUID conversaId
+        UUID conversaId,
+        String nomeUsuarioDestinatario
 ) {
 }
